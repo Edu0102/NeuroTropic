@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NeuroTropic Tic Tac Toe</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;800&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="grid-bg" aria-hidden="true"></div>
+
+  <header>
+    <h1 class="title" data-text="NEUROTROPIC">NEUROTROPIC</h1>
+    <p class="subtitle">// tic-tac-toe protocol v1.0</p>
+  </header>
+
+  <main>
+    <section class="game-panel">
+      <div class="hud">
+        <div class="score x"><span>X</span><b id="score-x">0</b></div>
+        <div id="status" class="status" role="status" aria-live="polite">INITIALIZING…</div>
+        <div class="score o"><span>O</span><b id="score-o">0</b></div>
+      </div>
+
+      <div id="board" class="board" role="grid" aria-label="Tabuleiro 3x3"></div>
+
+      <div class="controls">
+        <button id="btn-reset" class="btn">⟲ Reset</button>
+        <button id="btn-undo" class="btn">↶ Undo</button>
+      </div>
+      <p class="mode">MODE: <span id="mode">—</span> · DRAWS: <span id="score-d">0</span></p>
+    </section>
+
+    <section class="io-panel">
+      <div class="io-block">
+        <div class="io-head">
+          <h2>&gt; board.json</h2>
+          <button id="btn-copy" class="btn small">Copy</button>
+        </div>
+        <pre id="state-json" class="json"></pre>
+      </div>
+
+      <div class="io-block">
+        <h2>&gt; input.json</h2>
+        <textarea id="input-json" spellcheck="false">{ "action": "move", "position": 4 }</textarea>
+        <div class="controls">
+          <button id="btn-send" class="btn">Send ▸</button>
+        </div>
+        <pre id="input-result" class="json small"></pre>
+      </div>
+    </section>
+  </main>
+
+  <script src="game.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
