@@ -1,0 +1,11 @@
+{
+  "name": "neurotropic",
+  "version": "1.0.0",
+  "description": "Neon sci-fi Tic Tac Toe with a JSON API, ready for a neural network player",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "license": "MIT"
+}
