@@ -118,4 +118,30 @@ Como funciona:
 5. **Fit:** `model.fit(X, Y, ...)` treina a rede nessas melhores jogadas com
    backpropagation (entropia cruzada + Adam), depois de cada partida.
 
+### Neural Core: a rede ao vivo na página
+
+Com o `play` rodando, a seção **NEURAL CORE** (abaixo do jogo) mostra a rede
+trabalhando em tempo real:
+
+- **Entrada (18):** o tabuleiro na visão de quem joga (`+` = jogador da vez,
+  `−` = oponente) e a máscara de jogadas permitidas.
+- **Ocultas (128 e 64, ReLU):** cada quadrado é um neurônio; quanto mais
+  brilhante, maior a ativação.
+- **Conexões:** as 48 ligações que mais contribuíram em cada camada
+  (ciano = excita, magenta = inibe). Uma onda percorre a rede a cada decisão.
+- **Saída (9, softmax):** probabilidade de cada célula; a escolhida fica destacada.
+- **Treino:** progresso do `fit`, loss e acerto por época, e a loss de cada
+  partida para ver o aprendizado ao longo do tempo.
+- **Placar e eventos:** vitórias, derrotas, empates, reforços e punições.
+
+Na sua vez, a rede tenta **prever a sua jogada**. Na vez dela, mostra o que está
+**pensando** e a célula que escolheu. Passe o mouse num neurônio para ver o valor.
+
+```bash
+python ai/neurotropic_ai.py play --ai both              # demonstração: IA contra ela mesma
+python ai/neurotropic_ai.py pretrain --url http://localhost:3000   # ver o pré-treino ao vivo
+```
+
+O Python envia esses dados para `POST /api/nn`, e a página lê `GET /api/nn`.
+
 Modelo e memória ficam em `ai/model.npz` e `ai/memory.json` (fora do git); apague-os para recomeçar do zero.

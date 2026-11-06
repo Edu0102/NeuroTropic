@@ -122,7 +122,32 @@ class NeuralNetwork:
             p -= self.lr * m_hat / (np.sqrt(v_hat) + eps)  # atualização in-place
 
     # ---------- fit (estilo Keras) ----------
-    def fit(self, X, Y, mask, sample_weight=None, epochs=50, batch_size=32, verbose=True):
+    def trace(self, relative, legal_mask, top_edges=48):
+        """
+        Forward pass com tudo o que acontece dentro da rede, para a visualização:
+        valores de cada camada e as conexões que mais contribuíram (|a_i * W_ij|).
+        """
+        x = encode(relative, legal_mask)
+        acts, probs = self._forward(x[None, :], np.asarray(legal_mask, float)[None, :])
+        acts = [a[0] for a in acts]
+        edges = []
+        for i, W in enumerate(self.W):
+            contrib = acts[i][:, None] * W                     # contribuição de cada conexão
+            flat = np.argsort(-np.abs(contrib), axis=None)[:top_edges]
+            rows, cols = np.unravel_index(flat, contrib.shape)
+            edges.append([[int(r), int(c), round(float(contrib[r, c]), 4)]
+                          for r, c in zip(rows, cols) if contrib[r, c] != 0])
+        names = ["input"] + [f"hidden{i}" for i in range(1, len(self.W))] + ["output"]
+        return {
+            "layers": [{"name": n, "size": len(a), "values": [round(float(v), 4) for v in a]}
+                       for n, a in zip(names, acts)],
+            "edges": edges,
+            "probs": [round(float(p), 4) for p in probs[0]],
+            "architecture": self.layers,
+        }
+
+    def fit(self, X, Y, mask, sample_weight=None, epochs=50, batch_size=32, verbose=True,
+            on_epoch=None):
         X, Y, mask = (np.asarray(a, dtype=float) for a in (X, Y, mask))
         w = np.ones(len(X)) if sample_weight is None else np.asarray(sample_weight, dtype=float)
         n = len(X)
@@ -136,8 +161,10 @@ class NeuralNetwork:
                 self._adam_step(gW + gb)
             _, probs = self._forward(X, mask)
             loss = float(-(w * (Y * np.log(probs + 1e-12)).sum(axis=1)).mean())
+            acc = float((probs.argmax(1) == Y.argmax(1)).mean())
+            if on_epoch:
+                on_epoch(epoch, epochs, loss, acc)
             if verbose and (epoch == 1 or epoch == epochs or epoch % max(1, epochs // 5) == 0):
-                acc = float((probs.argmax(1) == Y.argmax(1)).mean())
                 print(f"    epoch {epoch:4d}/{epochs}  loss={loss:.4f}  acerto_melhor_jogada={acc:.0%}")
         return loss
 
@@ -232,23 +259,60 @@ def encode(relative, legal_mask):
     return np.concatenate([np.asarray(relative, float), np.asarray(legal_mask, float)])
 
 
+class Reporter:
+    """Envia a atividade da rede para o servidor (POST /api/nn) para a página mostrar ao vivo."""
+
+    def __init__(self, base_url=None):
+        self.base = base_url.rstrip("/") if base_url else None
+        self._warned = False
+
+    def send(self, **payload):
+        if not self.base:
+            return
+        req = urllib.request.Request(self.base + "/api/nn", data=json.dumps(payload).encode(),
+                                     headers={"Content-Type": "application/json"}, method="POST")
+        try:
+            urllib.request.urlopen(req, timeout=2).read()
+        except (urllib.error.URLError, ConnectionError, TimeoutError) as e:
+            if not self._warned:
+                print(f"  (visualização indisponível: {e})")
+                self._warned = True
+
+
 class Agent:
-    def __init__(self, epsilon=0.1, fit_epochs=60):
+    def __init__(self, epsilon=0.1, fit_epochs=60, reporter=None):
         self.net = NeuralNetwork.load() if os.path.exists(MODEL_PATH) else NeuralNetwork()
         self.memory = BestMoveMemory.load()
         self.epsilon = epsilon        # chance de explorar uma jogada aleatória
         self.fit_epochs = fit_epochs
         self.episode: list[tuple[list[float], int]] = []  # (estado relativo, jogada) desta partida
         self.stats = {"win": 0, "loss": 0, "draw": 0}
+        self.reporter = reporter or Reporter()
+        self.loss_history: list[float] = []  # loss final de cada fit
 
-    def choose(self, relative, legal_mask, explore=True):
-        probs = self.net.predict(encode(relative, legal_mask), legal_mask)[0]
+    def report_stats(self):
+        self.reporter.send(stats={**self.stats, "statesKnown": len(self.memory.table),
+                                  "epsilon": self.epsilon, "fits": len(self.loss_history),
+                                  "lossHistory": self.loss_history[-60:]})
+
+    def analyse(self, relative, legal_mask, mode, **extra):
+        """Forward pass sem jogar (ex.: prever a sua jogada) e envio para a visualização."""
+        trace = self.net.trace(relative, legal_mask)
+        self.reporter.send(forward={"mode": mode, "chosen": None, **trace, **extra})
+        return trace
+
+    def choose(self, relative, legal_mask, explore=True, report=False, **extra):
+        trace = self.net.trace(relative, legal_mask)
+        probs = np.array(trace["probs"])
         legal = [i for i, v in enumerate(legal_mask) if v]
-        if explore and random.random() < self.epsilon:
-            move = random.choice(legal)
-        else:
-            move = int(np.argmax(probs))
+        explored = explore and random.random() < self.epsilon
+        move = random.choice(legal) if explored else int(np.argmax(probs))
         self.episode.append((list(relative), move))
+        if report:
+            self.reporter.send(
+                forward={"mode": "thinking", "chosen": move, "explored": explored, **trace, **extra},
+                event={"type": "move", "text": f"IA joga na célula {move}"
+                       + (" (exploração aleatória)" if explored else f" ({probs[move]:.0%})")})
         return move, probs
 
     def end_game(self, result, verbose=True, fit=True):
@@ -261,9 +325,10 @@ class Agent:
         for i, (relative, move) in enumerate(self.episode):
             self.memory.record(relative, move, reward * GAMMA ** (n - 1 - i))
         self.episode = []
+        tag = {"win": "VITÓRIA → reforçando", "loss": "DERROTA → punindo", "draw": "EMPATE"}[result]
         if verbose:
-            tag = {"win": "VITÓRIA -> reforçando", "loss": "DERROTA -> punindo", "draw": "EMPATE"}[result]
             print(f"\n  {tag} (recompensa {reward:+.1f}). Estados conhecidos: {len(self.memory.table)}")
+            self.reporter.send(event={"type": result, "text": f"{tag} ({n} jogadas, recompensa {reward:+.1f})"})
         if fit:
             self.fit(verbose=verbose)
 
@@ -273,7 +338,21 @@ class Agent:
             return
         if verbose:
             print(f"  fit: {len(X)} estados com melhores jogadas, {self.fit_epochs} épocas")
-        self.net.fit(X, Y, M, sample_weight=W, epochs=self.fit_epochs, verbose=verbose)
+        curve = {"loss": [], "acc": []}
+
+        def on_epoch(epoch, epochs, loss, acc):
+            curve["loss"].append(round(loss, 4))
+            curve["acc"].append(round(acc, 4))
+            self.reporter.send(training={"active": epoch < epochs, "epoch": epoch, "epochs": epochs,
+                                         "samples": len(X), **curve})
+
+        loss = self.net.fit(X, Y, M, sample_weight=W, epochs=self.fit_epochs, verbose=verbose,
+                            on_epoch=on_epoch)
+        self.loss_history.append(round(loss, 4))
+        if verbose:
+            self.reporter.send(event={"type": "fit", "text": f"fit: {len(X)} estados, {self.fit_epochs} "
+                                      f"épocas, loss {loss:.3f}, acerto {curve['acc'][-1]:.0%}"})
+        self.report_stats()
         self.save()
 
     def save(self):
@@ -324,13 +403,24 @@ def show_probs(probs):
 # ======================================================================
 def play(args):
     client = GameClient(args.url)
-    agent = Agent(epsilon=args.epsilon, fit_epochs=args.epochs)
-    ai = args.ai
-    print(f"IA jogando de {ai} em {args.url}. Jogue no navegador. Ctrl+C para sair.")
-    print("Depois de cada partida clique em RESET para jogar de novo.\n")
+    agent = Agent(epsilon=args.epsilon, fit_epochs=args.epochs, reporter=Reporter(args.url))
+    self_play = args.ai == "both"
+    if args.delay is None:
+        args.delay = 1.2 if self_play else 0.4
+    sides = ["X", "O"] if self_play else [args.ai]
+    episodes = {p: [] for p in sides}  # jogadas de cada lado controlado pela IA
+    if self_play:
+        print(f"IA jogando contra ela mesma em {args.url} (reinicia sozinha). Ctrl+C para sair.\n")
+    else:
+        print(f"IA jogando de {args.ai} em {args.url}. Jogue no navegador. Ctrl+C para sair.")
+        print("Depois de cada partida clique em RESET para jogar de novo.\n")
+    agent.reporter.send(event={"type": "start", "text": "IA conectada: " + (
+        "jogando contra ela mesma" if self_play else f"jogando de {args.ai}")})
+    agent.report_stats()
 
     last_game = None
     finished_game = None
+    last_analysed = None
     while True:
         try:
             s = client.state()
@@ -341,27 +431,48 @@ def play(args):
 
         game_key = s["gameId"]
         if game_key != last_game:  # novo jogo (reset)
-            agent.episode = []
+            episodes = {p: [] for p in sides}
             last_game, finished_game = game_key, None
             print(f"--- Jogo #{game_key} ---")
 
+        position_key = (game_key, s["moveCount"], tuple(s["board"]))
         if s["status"] != "playing":
             # Undo depois do fim reabre o jogo; só aprende uma vez por final
             fin = (game_key, s["moveCount"])
-            if fin != finished_game and agent.episode:
-                agent.end_game(result_for(s, ai))
+            if fin != finished_game:
+                for p in sides:
+                    if episodes[p]:
+                        agent.episode = episodes[p]
+                        agent.end_game(result_for(s, p), fit=(p == sides[-1]))
+                        episodes[p] = []
                 w, l, d = agent.stats["win"], agent.stats["loss"], agent.stats["draw"]
-                print(f"  Placar da IA nesta sessão: {w}V {l}D {d}E. Clique em RESET.\n")
+                print(f"  Placar da IA nesta sessão: {w}V {l}D {d}E."
+                      + ("" if self_play else " Clique em RESET.") + "\n")
+                agent.report_stats()
+                if self_play:
+                    time.sleep(args.delay * 4)
+                    client.send({"action": "reset"})
             finished_game = fin
-        elif s["currentPlayer"] == ai:
-            time.sleep(args.delay)  # pausa para parecer natural
-            move, probs = agent.choose(s["nn"]["relative"], s["nn"]["legalMask"])
+        elif s["currentPlayer"] in sides:
+            player = s["currentPlayer"]
+            # Mostra a rede "pensando" antes de jogar
+            agent.analyse(s["nn"]["relative"], s["nn"]["legalMask"], "thinking",
+                          player=player, board=s["board"])
+            time.sleep(args.delay)
+            agent.episode = episodes[player]
+            move, probs = agent.choose(s["nn"]["relative"], s["nn"]["legalMask"], report=True,
+                                       player=player, board=s["board"])
             # Envia a jogada escolhida; se outro cliente mexeu antes, descarta
-            res = client.send({"position": move, "player": ai})
+            res = client.send({"position": move, "player": player})
             if res.get("ok"):
-                print(f"  IA joga na célula {move}\n    {show_probs(probs)}")
+                print(f"  IA ({player}) joga na célula {move}\n    {show_probs(probs)}")
             else:
                 agent.episode.pop()
+        elif position_key != last_analysed:
+            # Vez do humano: a rede tenta prever a sua jogada (visão de quem vai jogar)
+            agent.analyse(s["nn"]["relative"], s["nn"]["legalMask"], "predicting",
+                          player=s["currentPlayer"], board=s["board"])
+            last_analysed = position_key
         time.sleep(0.25)
 
 
@@ -387,7 +498,8 @@ def simulate(agent, ai_player, opponent="random"):
 
 
 def pretrain(args):
-    agent = Agent(epsilon=0.3, fit_epochs=args.epochs)
+    agent = Agent(epsilon=0.3, fit_epochs=args.epochs, reporter=Reporter(args.url))
+    agent.reporter.send(event={"type": "start", "text": f"Pré-treino: {args.games} partidas"})
     print(f"Pré-treino: {args.games} partidas contra jogador aleatório "
           f"(fit a cada {args.fit_every} partidas)")
     for g in range(1, args.games + 1):
@@ -397,6 +509,8 @@ def pretrain(args):
             agent.fit(verbose=False)
             w, l, d = agent.stats["win"], agent.stats["loss"], agent.stats["draw"]
             print(f"  {g:5d} partidas | V {w} D {l} E {d} | estados: {len(agent.memory.table)}")
+            agent.reporter.send(event={"type": "fit", "text": f"pré-treino {g}/{args.games}: "
+                                       f"{w}V {l}D {d}E, loss {agent.loss_history[-1]:.3f}"})
             agent.stats = {"win": 0, "loss": 0, "draw": 0}
     agent.fit(verbose=True)
     # Avaliação sem exploração
@@ -430,16 +544,20 @@ def main(argv=None):
 
     pp = sub.add_parser("play", help="joga contra você pelo servidor")
     pp.add_argument("--url", default="http://localhost:3000")
-    pp.add_argument("--ai", choices=["X", "O"], default="O", help="lado da IA (padrão O)")
+    pp.add_argument("--ai", choices=["X", "O", "both"], default="O",
+                    help="lado da IA (padrão O); 'both' = IA contra ela mesma, para demonstração")
     pp.add_argument("--epsilon", type=float, default=0.05, help="taxa de exploração")
     pp.add_argument("--epochs", type=int, default=60, help="épocas de fit após cada partida")
-    pp.add_argument("--delay", type=float, default=0.4, help="segundos antes de jogar")
+    pp.add_argument("--delay", type=float, default=None,
+                    help="segundos antes de jogar (padrão 0.4; 1.2 com --ai both)")
     pp.set_defaults(func=play)
 
     pt = sub.add_parser("pretrain", help="treino offline contra jogador aleatório")
     pt.add_argument("--games", type=int, default=3000)
     pt.add_argument("--fit-every", type=int, default=250)
     pt.add_argument("--epochs", type=int, default=30)
+    pt.add_argument("--url", default=None,
+                    help="servidor para mostrar o treino ao vivo (ex.: http://localhost:3000)")
     pt.set_defaults(func=pretrain)
 
     ps = sub.add_parser("stats", help="mostra o que a IA aprendeu")
