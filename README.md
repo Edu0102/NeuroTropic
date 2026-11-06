@@ -91,3 +91,31 @@ const { TicTacToe } = require("./public/game.js");
 const g = new TicTacToe();
 g.applyInput({ probabilities: net.predict(g.toJSON().nn.relative) });
 ```
+
+## IA (rede neural em Python)
+
+`ai/neurotropic_ai.py` joga contra você pelo servidor e aprende com cada partida.
+Só depende do `numpy` (`pip install -r ai/requirements.txt`).
+
+```bash
+npm start                                          # terminal 1: servidor do jogo
+python ai/neurotropic_ai.py pretrain --games 3000  # opcional: treino offline (~10 s)
+python ai/neurotropic_ai.py play                   # terminal 2: IA joga de O, você de X no navegador
+python ai/neurotropic_ai.py play --ai X            # IA começa
+python ai/neurotropic_ai.py stats                  # o que a IA já aprendeu
+```
+
+Como funciona:
+
+1. **Entrada:** do `GET /api/state` usa `nn.relative` e `nn.legalMask` (18 números).
+2. **Rede:** MLP 18 → 128 → 64 → 9 (ReLU, softmax mascarada), escrita em NumPy.
+   A saída são 9 probabilidades, enviadas como `{"probabilities": [...]}`, e o jogo escolhe a célula.
+3. **Recompensa:** vitória `+1` (reforça), empate `+0.5`, derrota `-1` (pune).
+   Cada jogada da partida recebe `recompensa × 0.8^(distância até o fim)`.
+4. **Melhores jogadas:** uma memória guarda, para cada estado do tabuleiro, o valor
+   médio de cada jogada. Disso sai uma distribuição alvo por estado (jogadas boas
+   com probabilidade alta, ruins perto de zero).
+5. **Fit:** `model.fit(X, Y, ...)` treina a rede nessas melhores jogadas com
+   backpropagation (entropia cruzada + Adam), depois de cada partida.
+
+Modelo e memória ficam em `ai/model.npz` e `ai/memory.json` (fora do git); apague-os para recomeçar do zero.

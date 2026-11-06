@@ -1,0 +1,5 @@
+node_modules/
+__pycache__/
+# estado aprendido pela IA (gerado localmente)
+ai/model.npz
+ai/memory.json
