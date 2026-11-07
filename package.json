@@ -4,6 +4,7 @@
   "description": "Neon sci-fi Tic Tac Toe with a JSON API, ready for a neural network player",
   "main": "server.js",
   "scripts": {
+    "setup": "python3 -m pip install -r ai/requirements.txt",
     "start": "node server.js",
     "test": "node --test"
   },

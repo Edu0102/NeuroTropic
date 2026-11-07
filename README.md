@@ -5,7 +5,10 @@ por humanos **e** por programas (ex.: uma rede neural) via JSON.
 
 ## Rodar
 
+Precisa de **Node 18+** e **Python 3.9+** instalados.
+
 ```bash
+npm run setup      # instala a dependência da IA (numpy); o jogo não tem pacotes npm
 npm start          # ou: node server.js  -> http://localhost:3000
 npm test           # testes (node --test, sem dependências)
 ```
