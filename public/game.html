@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NeuroTropic Tic Tac Toe</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;800&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="grid-bg" aria-hidden="true"></div>
+
+  <header>
+    <h1 class="title" data-text="NEUROTROPIC">NEUROTROPIC</h1>
+    <p class="subtitle">// tic-tac-toe protocol v1.0</p>
+  </header>
+
+  <main>
+    <section class="game-panel">
+      <div class="hud">
+        <div class="score x"><span>X</span><b id="score-x">0</b></div>
+        <div id="status" class="status" role="status" aria-live="polite">INITIALIZING…</div>
+        <div class="score o"><span>O</span><b id="score-o">0</b></div>
+      </div>
+
+      <div id="board" class="board" role="grid" aria-label="Tabuleiro 3x3"></div>
+
+      <div class="controls">
+        <button id="btn-reset" class="btn">⟲ Reset</button>
+        <button id="btn-undo" class="btn">↶ Undo</button>
+      </div>
+      <p class="mode">MODE: <span id="mode">—</span> · DRAWS: <span id="score-d">0</span></p>
+    </section>
+
+    <section class="io-panel">
+      <div class="io-block">
+        <div class="io-head">
+          <h2>&gt; board.json</h2>
+          <button id="btn-copy" class="btn small">Copy</button>
+        </div>
+        <pre id="state-json" class="json"></pre>
+      </div>
+
+      <div class="io-block">
+        <h2>&gt; input.json</h2>
+        <textarea id="input-json" spellcheck="false">{ "action": "move", "position": 4 }</textarea>
+        <div class="controls">
+          <button id="btn-send" class="btn">Send ▸</button>
+        </div>
+        <pre id="input-result" class="json small"></pre>
+      </div>
+    </section>
+  </main>
+
+  <section class="nn-section" aria-labelledby="nn-title">
+    <div class="nn-head">
+      <h2 id="nn-title" class="nn-title">NEURAL CORE <span>// live</span></h2>
+      <div class="nn-badges">
+        <span id="nn-mode" class="badge offline">OFFLINE</span>
+        <span id="nn-arch" class="badge dim">18 → 128 → 64 → 9</span>
+      </div>
+    </div>
+
+    <p id="nn-hint" class="nn-hint">
+      Aguardando a IA. Rode <code>python ai/neurotropic_ai.py play</code>
+      (ou <code>play --ai both</code> para ver a IA jogar contra ela mesma).
+    </p>
+
+    <div class="nn-stage">
+      <canvas id="nn-canvas" aria-label="Visualização da rede neural: entradas, camadas ocultas e saída"></canvas>
+      <div id="nn-tooltip" class="tooltip" hidden></div>
+    </div>
+    <div class="nn-legend">
+      <span><i class="sw sw-me"></i>peça de quem joga (+1)</span>
+      <span><i class="sw sw-opp"></i>peça do oponente (−1)</span>
+      <span><i class="sw sw-legal"></i>jogada permitida</span>
+      <span><i class="sw sw-act"></i>neurônio ativo (ReLU)</span>
+      <span><i class="ln ln-pos"></i>conexão que excita</span>
+      <span><i class="ln ln-neg"></i>conexão que inibe</span>
+    </div>
+
+    <div class="nn-grid">
+      <div class="nn-card">
+        <h3>Saída · probabilidade por célula</h3>
+        <div id="nn-output" class="nn-output"></div>
+        <p id="nn-decision" class="nn-decision">—</p>
+      </div>
+
+      <div class="nn-card">
+        <h3>Treino (fit por backpropagation)</h3>
+        <div class="progress"><div id="fit-bar"></div></div>
+        <p id="fit-label" class="muted small">Nenhum fit ainda</p>
+        <div class="charts">
+          <figure class="chart" data-chart="loss">
+            <figcaption>Loss do último fit, por época</figcaption>
+            <canvas></canvas>
+          </figure>
+          <figure class="chart" data-chart="acc">
+            <figcaption>Acerto da melhor jogada, por época</figcaption>
+            <canvas></canvas>
+          </figure>
+          <figure class="chart" data-chart="history">
+            <figcaption>Loss final de cada fit (aprendizado ao longo das partidas)</figcaption>
+            <canvas></canvas>
+          </figure>
+        </div>
+      </div>
+
+      <div class="nn-card">
+        <h3>Placar da IA</h3>
+        <div class="tiles">
+          <div class="tile"><b id="st-win">0</b><span>vitórias</span></div>
+          <div class="tile"><b id="st-loss">0</b><span>derrotas</span></div>
+          <div class="tile"><b id="st-draw">0</b><span>empates</span></div>
+          <div class="tile"><b id="st-states">0</b><span>estados na memória</span></div>
+        </div>
+        <h3>Eventos</h3>
+        <ol id="nn-events" class="events"></ol>
+      </div>
+    </div>
+  </section>
+
+  <script src="game.js"></script>
+  <script src="app.js"></script>
+  <script src="nn-viz.js"></script>
+</body>
+</html>
