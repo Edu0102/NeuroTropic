@@ -13,7 +13,7 @@ npm start          # ou: node server.js  -> http://localhost:3000
 npm test           # testes (node --test, sem dependências)
 ```
 
-Sem Node, dá para abrir `public/index.html` direto no navegador (modo LOCAL:
+A página inicial (`/`) leva ao jogo em `/game.html`. Sem Node, dá para abrir `public/game.html` direto no navegador (modo LOCAL:
 o jogo roda só no navegador, sem API HTTP).
 
 ## Estrutura
